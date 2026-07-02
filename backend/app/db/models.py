@@ -30,6 +30,39 @@ class TrendingItem(Base):
     confidence = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    @property
+    def primary_url(self):
+        if self.url:
+            return self.url
+        if isinstance(self.raw_data, dict):
+            value = self.raw_data.get("primary_url")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @property
+    def raw_urls(self):
+        urls = []
+
+        if self.url:
+            urls.append(self.url)
+
+        if isinstance(self.raw_data, dict):
+            raw_urls = self.raw_data.get("raw_urls")
+            if isinstance(raw_urls, list):
+                for value in raw_urls:
+                    if isinstance(value, str) and value.strip():
+                        urls.append(value.strip())
+
+        deduped = []
+        seen = set()
+        for url in urls:
+            if url in seen:
+                continue
+            seen.add(url)
+            deduped.append(url)
+        return deduped or None
+
 
 class Notification(Base):
     __tablename__ = "notifications"

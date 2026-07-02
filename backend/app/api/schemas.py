@@ -30,6 +30,8 @@ class TrendingItemResponse(BaseModel):
     id: int
     title: str
     url: Optional[str]
+    primary_url: Optional[str] = None
+    raw_urls: Optional[List[str]] = None
     summary: Optional[str]
     source: str
     score: float

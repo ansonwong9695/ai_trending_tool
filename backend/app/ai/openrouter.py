@@ -115,7 +115,10 @@ async def extract_trending_topics(domain: str, items: list, top_n: int = 10) -> 
 1. 排除重复、过时、无关内容
 2. 按热度和重要性排序
 3. 为每个热点生成简洁摘要
-4. 返回JSON数组格式: [{{"title": string, "summary": string, "source": string, "score": float, "tags": [string]}}]
+4. 每个热点必须返回 source_indices，表示它主要来自哪些输入条目，值为输入数组里的 index，按相关性排序，最多 3 个
+5. 不要编造 URL，不要输出输入中不存在的索引
+6. 返回JSON数组格式:
+   [{{"title": string, "summary": string, "source": string, "score": float, "tags": [string], "source_indices": [int]}}]
 
 score 为 0-100 的热度分数。"""
 

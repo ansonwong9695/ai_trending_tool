@@ -10,11 +10,73 @@ from app.services.scrapers.github import fetch_github_trending
 from app.services.scrapers.bing import search_bing
 
 
+def _collect_item_urls(item: Dict[str, Any]) -> List[str]:
+    urls: List[str] = []
+    for key in ("primary_url", "url", "link"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            urls.append(value.strip())
+
+    raw_urls = item.get("raw_urls")
+    if isinstance(raw_urls, list):
+        for value in raw_urls:
+            if isinstance(value, str) and value.strip():
+                urls.append(value.strip())
+
+    deduped: List[str] = []
+    seen = set()
+    for url in urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        deduped.append(url)
+    return deduped
+
+
+def _attach_topic_links(topics: List[Dict[str, Any]], source_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    enriched_topics: List[Dict[str, Any]] = []
+
+    for topic in topics:
+        indices = topic.get("source_indices")
+        if not isinstance(indices, list):
+            indices = []
+
+        topic_urls: List[str] = []
+        for index in indices:
+            if not isinstance(index, int):
+                continue
+            if index < 0 or index >= len(source_items):
+                continue
+            topic_urls.extend(_collect_item_urls(source_items[index]))
+
+        deduped_urls: List[str] = []
+        seen = set()
+        for url in topic_urls:
+            if url in seen:
+                continue
+            seen.add(url)
+            deduped_urls.append(url)
+
+        existing_urls = _collect_item_urls(topic)
+        for url in existing_urls:
+            if url in seen:
+                continue
+            seen.add(url)
+            deduped_urls.append(url)
+
+        topic["raw_urls"] = deduped_urls
+        topic["primary_url"] = deduped_urls[0] if deduped_urls else None
+        topic["url"] = topic.get("url") or topic["primary_url"]
+        enriched_topics.append(topic)
+
+    return enriched_topics
+
+
 async def _save_items(items: List[Dict[str, Any]], keyword: str = None):
     """Save trending items to database, skipping duplicates by URL."""
     async with async_session_maker() as db:
         for item in items:
-            url = item.get("url") or item.get("link")
+            url = item.get("url") or item.get("primary_url") or item.get("link")
             title = item.get("title", "")
             if not title:
                 continue
@@ -113,6 +175,7 @@ async def run_trending_collector():
     # AI extracts and ranks top topics
     try:
         topics = await extract_trending_topics("AI & Technology", all_items, top_n=20)
+        topics = _attach_topic_links(topics, all_items)
         for topic in topics:
             topic["source"] = topic.get("source", "aggregated")
             topic["is_relevant"] = True

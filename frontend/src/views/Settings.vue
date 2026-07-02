@@ -1,73 +1,136 @@
 <template>
-  <div class="settings-page">
-    <div class="page-header">
-      <h2>设置</h2>
-    </div>
-
-    <div v-if="loading" class="loading-placeholder card"></div>
-
-    <div v-else class="settings-form">
-      <section class="card settings-section">
-        <h3>通知设置</h3>
-        <div class="form-row">
-          <label class="toggle-label">
-            <span>启用邮件通知</span>
-            <div class="toggle" :class="{ on: form.enable_email }" @click="form.enable_email = !form.enable_email"></div>
-          </label>
-        </div>
-        <div class="form-row" v-if="form.enable_email">
-          <label class="field-label">通知邮箱</label>
-          <input v-model="form.notification_email" class="input" placeholder="your@email.com" type="email" />
-        </div>
-        <div class="form-row">
-          <label class="toggle-label">
-            <span>每日热点摘要（每天9:00）</span>
-            <div class="toggle" :class="{ on: form.daily_summary }" @click="form.daily_summary = !form.daily_summary"></div>
-          </label>
-        </div>
-      </section>
-
-<div v-if="saveError" class="alert-error">{{ saveError }}</div>
-      <div v-if="saveSuccess" class="alert-success">设置已保存</div>
-
-      <div class="form-actions">
-        <button class="btn btn-primary" @click="saveSettings" :disabled="saving">
-          {{ saving ? '保存中...' : '保存设置' }}
-        </button>
+  <div class="page-shell settings-page">
+    <section class="intro panel">
+      <div>
+        <p class="eyebrow">Delivery controls</p>
+        <h2>让重要热点更快到你面前，也更稳地发出去。</h2>
       </div>
-    </div>
+      <div class="intro-pills">
+        <span class="pill" :class="form.enable_email ? 'success' : 'danger'">
+          {{ form.enable_email ? '邮件通知已开启' : '邮件通知未开启' }}
+        </span>
+        <span class="pill" :class="form.daily_summary ? 'warning' : ''">
+          {{ form.daily_summary ? '每日摘要 09:00' : '每日摘要已关闭' }}
+        </span>
+      </div>
+    </section>
 
-    <section class="card settings-section notifications-section">
-      <h3>通知测试</h3>
-      <div class="test-actions">
-        <div class="test-item">
+    <section class="settings-grid">
+      <div class="panel settings-card">
+        <div class="card-heading">
           <div>
-            <p class="test-name">发送测试邮件</p>
-            <p class="test-desc">验证邮件配置是否正常</p>
+            <p class="eyebrow">Notify</p>
+            <h3 class="section-title">通知设置</h3>
           </div>
-          <button class="btn btn-outline-sm" @click="testEmail" :disabled="testingEmail">
-            {{ testingEmail ? '发送中...' : '发送测试' }}
-          </button>
+          <span class="pill">{{ form.notification_email || 'No inbox yet' }}</span>
         </div>
-        <div class="test-item">
-          <div>
-            <p class="test-name">触发每日摘要</p>
-            <p class="test-desc">立即生成并发送今日热点摘要</p>
+
+        <div v-if="loading" class="settings-loading loading-card"></div>
+
+        <div v-else class="settings-form">
+          <div class="toggle-row">
+            <div>
+              <p class="toggle-title">启用邮件通知</p>
+              <p class="text-muted">当监控到热点时，通过邮件把信号推到你的收件箱。</p>
+            </div>
+            <button
+              class="toggle-switch"
+              :class="{ on: form.enable_email }"
+              @click="form.enable_email = !form.enable_email"
+              :aria-pressed="String(form.enable_email)"
+            >
+              <span></span>
+            </button>
           </div>
-          <button class="btn btn-outline-sm" @click="triggerSummary" :disabled="triggeringSummary">
-            {{ triggeringSummary ? '发送中...' : '立即发送' }}
-          </button>
+
+          <div v-if="form.enable_email" class="input-shell">
+            <label class="input-label" for="notification-email">通知邮箱</label>
+            <input
+              id="notification-email"
+              v-model="form.notification_email"
+              class="input"
+              type="email"
+              placeholder="you@domain.com"
+            />
+          </div>
+
+          <div class="toggle-row">
+            <div>
+              <p class="toggle-title">每日热点摘要</p>
+              <p class="text-muted">每天 09:00 自动发送当日精选热点，适合回顾和二次整理。</p>
+            </div>
+            <button
+              class="toggle-switch"
+              :class="{ on: form.daily_summary }"
+              @click="form.daily_summary = !form.daily_summary"
+              :aria-pressed="String(form.daily_summary)"
+            >
+              <span></span>
+            </button>
+          </div>
+
+          <div v-if="saveError" class="alert error">{{ saveError }}</div>
+          <div v-if="saveSuccess" class="alert success">设置已保存</div>
+
+          <div class="actions">
+            <AceternityGlowButton :disabled="saving" @click="saveSettings">
+              {{ saving ? '保存中...' : '保存设置' }}
+            </AceternityGlowButton>
+          </div>
         </div>
       </div>
-      <div v-if="testMessage" class="alert-success">{{ testMessage }}</div>
-      <div v-if="testError" class="alert-error">{{ testError }}</div>
+
+      <div class="side-stack">
+        <div class="panel ops-card">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">Operations</p>
+              <h3 class="section-title">通知测试</h3>
+            </div>
+          </div>
+
+          <div class="ops-list">
+            <div class="ops-item">
+              <div>
+                <p class="toggle-title">发送测试邮件</p>
+                <p class="text-muted">验证 SMTP 配置、收件箱和模板是否正常。</p>
+              </div>
+              <button class="ghost-button" @click="testEmail" :disabled="testingEmail">
+                {{ testingEmail ? '发送中...' : '发送测试' }}
+              </button>
+            </div>
+
+            <div class="ops-item">
+              <div>
+                <p class="toggle-title">触发每日摘要</p>
+                <p class="text-muted">立即发送一封模拟当日摘要，检查最终交付体验。</p>
+              </div>
+              <button class="ghost-button" @click="triggerSummary" :disabled="triggeringSummary">
+                {{ triggeringSummary ? '发送中...' : '立即发送' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="testMessage" class="alert success">{{ testMessage }}</div>
+          <div v-if="testError" class="alert error">{{ testError }}</div>
+        </div>
+
+        <div class="panel insight-card">
+          <p class="eyebrow">System note</p>
+          <h3 class="section-title">这套通知流的目标</h3>
+          <p class="section-copy">
+            平时用关键词和热点流筛掉噪声，真正有价值的内容再用邮件和摘要送出来。即时性和可回顾性都要有，但谁也不能压过主界面的判断效率。
+          </p>
+        </div>
+      </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { settingsApi, notificationsApi } from '../services/api.js'
+import { onMounted, ref } from 'vue'
+import AceternityGlowButton from '../components/AceternityGlowButton.vue'
+import { notificationsApi, settingsApi } from '../services/api.js'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -94,7 +157,7 @@ async function fetchSettings() {
       notification_email: data.notification_email || '',
     }
   } catch {
-    // use defaults if no settings yet
+    // Keep defaults when settings are not initialized yet.
   } finally {
     loading.value = false
   }
@@ -107,7 +170,9 @@ async function saveSettings() {
   try {
     await settingsApi.update(form.value)
     saveSuccess.value = true
-    setTimeout(() => { saveSuccess.value = false }, 3000)
+    setTimeout(() => {
+      saveSuccess.value = false
+    }, 3000)
   } catch (e) {
     saveError.value = e.message
   } finally {
@@ -122,10 +187,14 @@ async function testEmail() {
   try {
     await notificationsApi.testEmail()
     testMessage.value = '测试邮件已发送，请检查收件箱'
-    setTimeout(() => { testMessage.value = '' }, 4000)
+    setTimeout(() => {
+      testMessage.value = ''
+    }, 4000)
   } catch (e) {
     testError.value = e.message
-    setTimeout(() => { testError.value = '' }, 4000)
+    setTimeout(() => {
+      testError.value = ''
+    }, 4000)
   } finally {
     testingEmail.value = false
   }
@@ -138,10 +207,14 @@ async function triggerSummary() {
   try {
     await notificationsApi.dailySummary()
     testMessage.value = '每日摘要已发送'
-    setTimeout(() => { testMessage.value = '' }, 4000)
+    setTimeout(() => {
+      testMessage.value = ''
+    }, 4000)
   } catch (e) {
     testError.value = e.message
-    setTimeout(() => { testError.value = '' }, 4000)
+    setTimeout(() => {
+      testError.value = ''
+    }, 4000)
   } finally {
     triggeringSummary.value = false
   }
@@ -151,182 +224,143 @@ onMounted(fetchSettings)
 </script>
 
 <style scoped>
-.page-header {
-  margin-bottom: 1.5rem;
+.settings-page {
+  gap: 1.35rem;
 }
 
-.page-header h2 {
-  font-size: 2rem;
-}
-
-.settings-form {
+.intro {
   display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.2rem;
 }
 
-.settings-section {
+.intro h2 {
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  max-width: 14ch;
+}
+
+.intro-pills {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
   gap: 1rem;
 }
 
-.settings-section h3 {
-  font-size: 1.1rem;
-  color: var(--color-text-secondary);
-  font-weight: 600;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--color-border);
+.settings-card,
+.ops-card,
+.insight-card {
+  padding: 1.2rem;
 }
 
-.form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.field-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.field-hint {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-
-.input-sm {
-  max-width: 160px;
-}
-
-.toggle-label {
+.card-heading {
   display: flex;
   justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.settings-form,
+.side-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-loading {
+  min-height: 320px;
+  border-radius: 22px;
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
   align-items: center;
-  cursor: pointer;
-  user-select: none;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(144, 187, 255, 0.12);
+  background: rgba(8, 18, 33, 0.68);
 }
 
-.toggle-label span {
-  font-size: 0.95rem;
-  font-weight: 500;
+.toggle-title {
+  font-weight: 700;
+  margin-bottom: 0.15rem;
 }
 
-.toggle {
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  background: #D1D5DB;
+.toggle-switch {
   position: relative;
-  transition: background 0.2s;
-  cursor: pointer;
   flex-shrink: 0;
+  width: 58px;
+  height: 32px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(52, 68, 96, 0.8);
+  border: 1px solid rgba(144, 187, 255, 0.12);
+  transition: background 180ms ease;
 }
 
-.toggle::after {
-  content: '';
-  position: absolute;
-  width: 18px;
-  height: 18px;
+.toggle-switch span {
+  display: block;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: white;
-  top: 3px;
-  left: 3px;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  background: #f3f7ff;
+  transform: translateX(0);
+  transition: transform 180ms ease;
 }
 
-.toggle.on {
-  background: var(--color-primary);
+.toggle-switch.on {
+  background: linear-gradient(135deg, rgba(98, 179, 255, 0.88), rgba(44, 246, 201, 0.76));
 }
 
-.toggle.on::after {
-  transform: translateX(20px);
+.toggle-switch.on span {
+  transform: translateX(26px);
 }
 
-.form-actions {
+.actions {
   display: flex;
-  justify-content: flex-start;
 }
 
-.alert-error {
-  background: #FEE2E2;
-  color: #B91C1C;
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  font-size: 0.875rem;
+.ops-list {
+  display: grid;
+  gap: 0.85rem;
 }
 
-.alert-success {
-  background: #DCFCE7;
-  color: #15803D;
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  font-size: 0.875rem;
-}
-
-.loading-placeholder {
-  height: 200px;
-  background: linear-gradient(90deg, #ede8df 25%, #f6f1e8 50%, #ede8df 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  margin-bottom: 1.25rem;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.notifications-section {
-  margin-top: 0.25rem;
-}
-
-.test-actions {
+.ops-item {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(144, 187, 255, 0.12);
+  background: rgba(8, 18, 33, 0.66);
+}
+
+.insight-card {
+  display: grid;
   gap: 0.75rem;
 }
 
-.test-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+@media (max-width: 1080px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.test-name {
-  font-weight: 500;
-  font-size: 0.95rem;
-}
-
-.test-desc {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  margin-top: 0.15rem;
-}
-
-.btn-outline-sm {
-  border: 1.5px solid var(--color-primary);
-  color: var(--color-primary);
-  padding: 0.35rem 0.9rem;
-  border-radius: 6px;
-  background: transparent;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s;
-}
-
-.btn-outline-sm:hover:not(:disabled) {
-  background: var(--color-primary);
-  color: white;
-}
-
-.btn-outline-sm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+@media (max-width: 720px) {
+  .toggle-row,
+  .ops-item {
+    flex-direction: column;
+    align-items: start;
+  }
 }
 </style>
