@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List, Annotated
@@ -6,6 +6,7 @@ from typing import List, Annotated
 from app.db.database import get_db
 from app.db.models import Keyword
 from app.api.schemas import KeywordCreate, KeywordUpdate, KeywordResponse
+from app.jobs.monitor import run_keyword_monitor
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ async def list_keywords(db: DbDep):
 
 
 @router.post("/", response_model=KeywordResponse, status_code=201)
-async def create_keyword(data: KeywordCreate, db: DbDep):
+async def create_keyword(data: KeywordCreate, background_tasks: BackgroundTasks, db: DbDep):
     existing = await db.execute(select(Keyword).where(Keyword.keyword == data.keyword))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Keyword already exists")
@@ -28,6 +29,10 @@ async def create_keyword(data: KeywordCreate, db: DbDep):
     db.add(keyword)
     await db.commit()
     await db.refresh(keyword)
+
+    if keyword.is_active:
+        background_tasks.add_task(run_keyword_monitor)
+
     return keyword
 
 
