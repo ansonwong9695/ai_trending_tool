@@ -1,6 +1,6 @@
 # AI Trending Tool
 
-一个面向 AI 编程与内容分享场景的热点监控工具。它会从 Hacker News、GitHub Trending、Bing News 等来源采集内容，通过 OpenRouter 做相关性分析、摘要与趋势聚合，并把高价值信号展示在一个科技感、低干扰的 Vue 控制台里。
+一个面向 AI 编程与内容分享场景的热点监控工具。它会从 Hacker News、GitHub Trending、Bing News、微博等来源采集内容，通过 OpenRouter 做相关性分析、摘要与趋势聚合，并把高价值信号展示在一个科技感、低干扰的 Vue 控制台里。
 
 当前界面采用深色科技风格：重点突出“第一时间发现热点、快速判断是否值得打开、立即分享有价值内容”，避免复杂操作和过度动效影响使用效率。
 
@@ -8,7 +8,7 @@
 
 - 热点看板：按时间展示最新热点，支持来源筛选、分页加载、评分和标签展示。
 - 原文跳转：卡片和 `Read now` 会优先使用 `url`，再回退到 `primary_url` / `raw_urls[0]`。
-- 关键词监控：添加、暂停、删除关键词，针对关键词抓取 Hacker News 和 Bing 新闻。
+- 关键词监控：添加、暂停、删除关键词，针对关键词抓取 Hacker News、Bing 新闻和微博搜索结果。
 - AI 分析：通过 OpenRouter 批量判断相关性、生成摘要、提取聚合趋势主题。
 - 通知能力：支持邮件通知、每日摘要和通知记录查询。
 - 定时任务：后端启动后通过 APScheduler 按配置周期自动执行监控任务。
@@ -65,7 +65,7 @@ SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_app_password
 NOTIFICATION_EMAIL=you@example.com
 
-TWITTER_API_KEY=
+WEIBO_COOKIE=SUB=...; SUBP=...; SCF=...; ALF=...; SSOLoginState=...; _T_WM=...; MLOGIN=1; WEIBOCN_FROM=...; M_WEIBOCN_PARAMS=...; mweibo_short_token=...; XSRF-TOKEN=...
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:you@example.com
@@ -142,14 +142,14 @@ POST   /api/v1/notifications/daily-summary # 发送每日摘要
 - Hacker News：免费 API，用于趋势与关键词搜索。
 - GitHub Trending：页面爬取，用于全局技术趋势采集。
 - Bing News：页面搜索结果爬取，用于关键词新闻监控。
-- Twitter/X：保留配置字段，当前默认不参与采集。
+- 微博：通过 `m.weibo.cn` 的移动端 JSON 搜索接口抓取，必须提供有效的移动端登录 Cookie。
 
 ## 开发命令
 
 后端语法检查：
 
 ```bash
-python3 -m py_compile backend/app/ai/openrouter.py backend/app/api/schemas.py backend/app/db/models.py backend/app/jobs/monitor.py
+python3 -m py_compile backend/app/ai/openrouter.py backend/app/api/schemas.py backend/app/db/models.py backend/app/jobs/monitor.py backend/app/services/scrapers/weibo.py
 ```
 
 前端构建：

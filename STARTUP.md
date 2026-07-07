@@ -23,8 +23,8 @@ SMTP_USER=your_email@gmail.com         # Gmail 账号
 SMTP_PASS=xxxx xxxx xxxx xxxx          # Gmail 应用专用密码（不是登录密码）
 NOTIFICATION_EMAIL=you@example.com     # 接收通知的邮箱
 
-# 🐦 可选 —— Twitter 数据源（当前已停用，保留字段兼容旧配置）
-TWITTER_API_KEY=
+# 🐦 可选 —— 微博数据源（关键词监控会使用，但实际必填 Cookie）
+WEIBO_COOKIE=SUB=...; SUBP=...; SCF=...; ALF=...; SSOLoginState=...; _T_WM=...; MLOGIN=1; WEIBOCN_FROM=...; M_WEIBOCN_PARAMS=...; mweibo_short_token=...; XSRF-TOKEN=...
 
 # 🔔 可选 —— Web Push 浏览器推送（不填则禁用）
 VAPID_PUBLIC_KEY=
@@ -106,7 +106,7 @@ npm run dev
 |------|---------|--------------|
 | AI 内容分析 | `OPENROUTER_API_KEY` | 监控任务报错，内容不会被分析 |
 | 邮件通知 | `SMTP_*` + 设置页开启 | 发送静默失败，不影响其他功能 |
-| Twitter 数据源 | `TWITTER_API_KEY` | 当前已停用，不参与采集 |
+| 微博数据源 | `WEIBO_COOKIE` | 未配置时微博关键词采集会直接跳过；需提供 `m.weibo.cn` 可用登录 Cookie |
 | Web Push | `VAPID_*` | 禁用，不影响邮件和应用内通知 |
 | Hacker News | 无需配置 | 始终可用 |
 | Bing 新闻 | 无需配置 | 始终可用（注意频率限制） |

@@ -48,7 +48,7 @@
             <AceternityGlowButton type="submit" :disabled="adding || !newKeyword.trim()">
               {{ adding ? '添加中...' : '加入监控队列' }}
             </AceternityGlowButton>
-            <p class="text-soft">默认每 30 分钟自动扫描一次。</p>
+            <p class="text-soft">添加后会立即触发一次扫描，之后默认每 30 分钟自动扫描一次。</p>
           </div>
         </form>
       </div>
@@ -154,8 +154,9 @@ import { keywordsApi } from '../services/api.js'
 const SOURCES = [
   { value: 'hackernews', label: 'Hacker News' },
   { value: 'bing', label: 'Bing News' },
+  { value: 'weibo', label: 'Weibo' },
 ]
-const defaultSources = ['hackernews', 'bing']
+const defaultSources = ['hackernews', 'bing', 'weibo']
 
 const keywords = ref([])
 const loading = ref(false)
@@ -234,7 +235,13 @@ function formatDate(iso) {
 }
 
 function formatSource(source) {
-  return source === 'hackernews' ? 'Hacker News' : source === 'bing' ? 'Bing News' : source
+  return source === 'hackernews'
+    ? 'Hacker News'
+    : source === 'bing'
+      ? 'Bing News'
+      : source === 'weibo'
+        ? 'Weibo'
+        : source
 }
 
 onMounted(fetchKeywords)

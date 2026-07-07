@@ -8,6 +8,7 @@ from app.ai.openrouter import analyze_relevance_batch, extract_trending_topics
 from app.services.scrapers.hackernews import fetch_hn_trending, search_hn_by_keyword
 from app.services.scrapers.github import fetch_github_trending
 from app.services.scrapers.bing import search_bing
+from app.services.scrapers.weibo import search_weibo
 
 
 def _collect_item_urls(item: Dict[str, Any]) -> List[str]:
@@ -72,6 +73,14 @@ def _attach_topic_links(topics: List[Dict[str, Any]], source_items: List[Dict[st
     return enriched_topics
 
 
+def _normalize_sources(sources: List[str]) -> set:
+    normalized = set(sources)
+    if "nitter" in normalized:
+        normalized.discard("nitter")
+        normalized.add("weibo")
+    return normalized
+
+
 async def _save_items(items: List[Dict[str, Any]], keyword: str = None):
     """Save trending items to database, skipping duplicates by URL."""
     async with async_session_maker() as db:
@@ -114,8 +123,8 @@ async def run_keyword_monitor():
         keywords = result.scalars().all()
 
     for kw in keywords:
-        sources = kw.sources or ["hackernews", "bing"]
-        normalized_sources = set(sources)
+        sources = kw.sources or ["hackernews", "bing", "weibo"]
+        normalized_sources = _normalize_sources(sources)
         all_items = []
 
         tasks = []
@@ -123,6 +132,8 @@ async def run_keyword_monitor():
             tasks.append(search_hn_by_keyword(kw.keyword))
         if "bing" in normalized_sources:
             tasks.append(search_bing(kw.keyword))
+        if "weibo" in normalized_sources:
+            tasks.append(search_weibo(kw.keyword))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
