@@ -1,6 +1,8 @@
 import asyncio
 import re
 from collections import Counter
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import List, Dict, Any
 from sqlalchemy import select
 
@@ -19,6 +21,28 @@ from app.services.scrapers.weibo import search_weibo
 DEFAULT_KEYWORD_SOURCES = ["hackernews", "bing", "google_news", "baidu_news", "sogou_weixin", "weibo"]
 TRENDING_NEWS_QUERY = '"AI" OR "LLM" OR "agent" OR "OpenAI" OR "Anthropic" OR "Gemini"'
 LEGACY_DEFAULT_KEYWORD_SOURCES = {"hackernews", "bing", "google_news", "weibo"}
+CHINA_TZ = timezone(timedelta(hours=8))
+RECENCY_WINDOWS_HOURS = {
+    "weibo": 168,
+    "hackernews": 168,
+    "bing": 168,
+    "google_news": 168,
+    "baidu_news": 168,
+    "sogou_weixin": 168,
+}
+ALWAYS_FRESH_SOURCES = {"github"}
+STRICT_RECENCY_SOURCES = {"weibo", "hackernews", "bing", "google_news", "baidu_news", "sogou_weixin"}
+CN_RELATIVE_PATTERNS = (
+    (re.compile(r"(\d+)\s*分钟前"), "minutes"),
+    (re.compile(r"(\d+)\s*小时前"), "hours"),
+    (re.compile(r"(\d+)\s*天前"), "days"),
+    (re.compile(r"(\d+)\s*周前"), "weeks"),
+)
+EN_RELATIVE_PATTERNS = (
+    (re.compile(r"(\d+)\s*minutes?\s*ago", re.IGNORECASE), "minutes"),
+    (re.compile(r"(\d+)\s*hours?\s*ago", re.IGNORECASE), "hours"),
+    (re.compile(r"(\d+)\s*days?\s*ago", re.IGNORECASE), "days"),
+)
 
 
 def _normalize_sources(sources: List[str]) -> set:
@@ -43,6 +67,176 @@ def _normalize_sources(sources: List[str]) -> set:
 
 def _normalize_title(title: str) -> str:
     return re.sub(r"\s+", " ", (title or "").strip().lower())
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return None
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    if text.isdigit():
+        return datetime.fromtimestamp(float(text), tz=timezone.utc)
+
+    # RFC2822/RSS dates, e.g. "Wed, 09 Jul 2026 08:30:00 GMT"
+    try:
+        parsed = parsedate_to_datetime(text)
+        if parsed:
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError, IndexError):
+        pass
+
+    # Weibo mobile format, e.g. "Tue Jul 09 12:34:56 +0800 2026"
+    try:
+        return datetime.strptime(text, "%a %b %d %H:%M:%S %z %Y")
+    except ValueError:
+        pass
+
+    try:
+        parsed = datetime.fromisoformat(text)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+
+    return None
+
+
+def _parse_relative_datetime(text: str, now: datetime) -> datetime | None:
+    for pattern, unit in CN_RELATIVE_PATTERNS + EN_RELATIVE_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        value = int(match.group(1))
+        if unit == "minutes":
+            return now - timedelta(minutes=value)
+        if unit == "hours":
+            return now - timedelta(hours=value)
+        if unit == "days":
+            return now - timedelta(days=value)
+        if unit == "weeks":
+            return now - timedelta(weeks=value)
+
+    match = re.search(r"(今天|昨日|昨天)\s*(\d{1,2}:\d{2})?", text)
+    if match:
+        day_token = match.group(1)
+        time_token = match.group(2) or "00:00"
+        hours, minutes = [int(part) for part in time_token.split(":")]
+        base = now.astimezone(CHINA_TZ).replace(hour=hours, minute=minutes, second=0, microsecond=0)
+        if day_token in {"昨日", "昨天"}:
+            base -= timedelta(days=1)
+        return base
+
+    absolute_patterns = [
+        (r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})[日]?\s*(\d{1,2}:\d{2})?", True),
+        (r"(\d{1,2})[-/月](\d{1,2})[日]?\s*(\d{1,2}:\d{2})?", False),
+    ]
+    local_now = now.astimezone(CHINA_TZ)
+    for pattern, has_year in absolute_patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        if has_year:
+            year = int(match.group(1))
+            month = int(match.group(2))
+            day = int(match.group(3))
+            time_token = match.group(4)
+        else:
+            year = local_now.year
+            month = int(match.group(1))
+            day = int(match.group(2))
+            time_token = match.group(3)
+
+        hour = 0
+        minute = 0
+        if time_token:
+            hour, minute = [int(part) for part in time_token.split(":")]
+
+        try:
+            parsed = datetime(year, month, day, hour, minute, tzinfo=CHINA_TZ)
+        except ValueError:
+            continue
+
+        if not has_year and parsed > local_now + timedelta(days=1):
+            parsed = parsed.replace(year=parsed.year - 1)
+        return parsed
+
+    return None
+
+
+def _extract_item_datetime(item: Dict[str, Any], now: datetime) -> datetime | None:
+    source = item.get("source")
+
+    candidates = []
+    if source == "hackernews":
+        candidates.append(item.get("time"))
+    if item.get("published_at") is not None:
+        candidates.append(item.get("published_at"))
+    if item.get("created_at") is not None:
+        candidates.append(item.get("created_at"))
+    if isinstance(item.get("raw_data"), dict):
+        raw_data = item["raw_data"]
+        for key in ("published_at", "created_at", "time"):
+            if raw_data.get(key) is not None:
+                candidates.append(raw_data.get(key))
+
+    for candidate in candidates:
+        parsed = _coerce_datetime(candidate)
+        if parsed:
+            return parsed
+        if isinstance(candidate, str):
+            parsed = _parse_relative_datetime(candidate, now)
+            if parsed:
+                return parsed
+
+    return None
+
+
+def _filter_recent_items(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], Dict[str, Dict[str, int]]]:
+    now = datetime.now(timezone.utc)
+    kept: List[Dict[str, Any]] = []
+    stats = {
+        "kept": Counter(),
+        "stale": Counter(),
+        "unknown_time": Counter(),
+    }
+
+    for item in items:
+        source = item.get("source", "unknown")
+        if source in ALWAYS_FRESH_SOURCES:
+            stats["kept"][source] += 1
+            kept.append(item)
+            continue
+
+        published_at = _extract_item_datetime(item, now)
+        if published_at is None:
+            if source in STRICT_RECENCY_SOURCES:
+                stats["unknown_time"][source] += 1
+                continue
+            stats["kept"][source] += 1
+            kept.append(item)
+            continue
+
+        published_at_utc = published_at.astimezone(timezone.utc)
+        item["published_at_resolved"] = published_at_utc.isoformat()
+        max_age_hours = RECENCY_WINDOWS_HOURS.get(source, 168)
+        if published_at_utc < now - timedelta(hours=max_age_hours):
+            stats["stale"][source] += 1
+            continue
+
+        stats["kept"][source] += 1
+        kept.append(item)
+
+    return kept, {key: dict(counter) for key, counter in stats.items()}
 
 
 def _dedupe_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -253,6 +447,9 @@ async def run_keyword_monitor():
             if isinstance(r, list):
                 all_items.extend(r)
 
+        all_items, recency_stats = _filter_recent_items(all_items)
+        if any(recency_stats.values()):
+            print(f"Keyword '{kw.keyword}' recency stats: {recency_stats}")
         all_items = _dedupe_items(all_items)
 
         # AI relevance filtering — one batch call instead of one per item
@@ -313,6 +510,8 @@ async def run_trending_collector():
 
         all_items.extend(result)
 
+    all_items, recency_stats = _filter_recent_items(all_items)
+    print(f"Trending recency stats: {recency_stats}")
     all_items = _dedupe_items(all_items)
     deduped_counts = Counter(item.get("source", "unknown") for item in all_items)
 
