@@ -155,9 +155,11 @@ const SOURCES = [
   { value: 'hackernews', label: 'Hacker News' },
   { value: 'bing', label: 'Bing News' },
   { value: 'google_news', label: 'Google News' },
+  { value: 'baidu_news', label: 'Baidu News' },
+  { value: 'sogou_weixin', label: 'Sogou Weixin' },
   { value: 'weibo', label: 'Weibo' },
 ]
-const defaultSources = ['hackernews', 'bing', 'google_news', 'weibo']
+const defaultSources = ['hackernews', 'bing', 'google_news', 'baidu_news', 'sogou_weixin', 'weibo']
 
 const keywords = ref([])
 const loading = ref(false)
@@ -242,9 +244,13 @@ function formatSource(source) {
       ? 'Bing News'
       : source === 'google_news'
         ? 'Google News'
-      : source === 'weibo'
-        ? 'Weibo'
-        : source
+        : source === 'baidu_news'
+          ? 'Baidu News'
+          : source === 'sogou_weixin'
+            ? 'Sogou Weixin'
+            : source === 'weibo'
+              ? 'Weibo'
+              : source
 }
 
 onMounted(fetchKeywords)

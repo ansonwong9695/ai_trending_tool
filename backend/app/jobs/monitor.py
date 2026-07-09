@@ -11,11 +11,14 @@ from app.services.scrapers.hackernews import fetch_hn_trending, search_hn_by_key
 from app.services.scrapers.github import fetch_github_trending
 from app.services.scrapers.bing import search_bing
 from app.services.scrapers.google_news import search_google_news
+from app.services.scrapers.baidu_news import search_baidu_news
+from app.services.scrapers.sogou_weixin import search_sogou_weixin
 from app.services.scrapers.weibo import search_weibo
 
 
-DEFAULT_KEYWORD_SOURCES = ["hackernews", "bing", "google_news", "weibo"]
+DEFAULT_KEYWORD_SOURCES = ["hackernews", "bing", "google_news", "baidu_news", "sogou_weixin", "weibo"]
 TRENDING_NEWS_QUERY = '"AI" OR "LLM" OR "agent" OR "OpenAI" OR "Anthropic" OR "Gemini"'
+LEGACY_DEFAULT_KEYWORD_SOURCES = {"hackernews", "bing", "google_news", "weibo"}
 
 
 def _normalize_sources(sources: List[str]) -> set:
@@ -26,6 +29,15 @@ def _normalize_sources(sources: List[str]) -> set:
     if "google" in normalized:
         normalized.discard("google")
         normalized.add("google_news")
+    if "baidu" in normalized:
+        normalized.discard("baidu")
+        normalized.add("baidu_news")
+    if "sogou" in normalized or "weixin" in normalized:
+        normalized.discard("sogou")
+        normalized.discard("weixin")
+        normalized.add("sogou_weixin")
+    if normalized == LEGACY_DEFAULT_KEYWORD_SOURCES:
+        normalized.update({"baidu_news", "sogou_weixin"})
     return normalized
 
 
@@ -57,7 +69,7 @@ def _dedupe_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _sort_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    source_order = ["hackernews", "github", "bing", "google_news", "weibo"]
+    source_order = ["hackernews", "github", "baidu_news", "bing", "google_news", "weibo", "sogou_weixin"]
     grouped: Dict[str, List[Dict[str, Any]]] = {source: [] for source in source_order}
     extras: List[Dict[str, Any]] = []
 
@@ -226,6 +238,10 @@ async def run_keyword_monitor():
             tasks.append(search_bing(kw.keyword))
         if "google_news" in normalized_sources:
             tasks.append(search_google_news(kw.keyword))
+        if "baidu_news" in normalized_sources:
+            tasks.append(search_baidu_news(kw.keyword))
+        if "sogou_weixin" in normalized_sources:
+            tasks.append(search_sogou_weixin(kw.keyword))
         if "weibo" in normalized_sources:
             tasks.append(search_weibo(kw.keyword))
 
@@ -273,6 +289,7 @@ async def run_trending_collector():
     source_tasks = [
         ("hackernews", fetch_hn_trending(limit=30)),
         ("github", fetch_github_trending()),
+        ("baidu_news", search_baidu_news(TRENDING_NEWS_QUERY, limit=20)),
         ("bing", search_bing(TRENDING_NEWS_QUERY, limit=20)),
         ("google_news", search_google_news(TRENDING_NEWS_QUERY, limit=20)),
     ]

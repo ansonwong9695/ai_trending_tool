@@ -22,6 +22,7 @@
               <option value="">全部来源</option>
               <option value="hackernews">Hacker News</option>
               <option value="github">GitHub</option>
+              <option value="baidu_news">Baidu News</option>
               <option value="bing">Bing News</option>
               <option value="google_news">Google News</option>
               <option value="weibo">Weibo</option>
@@ -307,8 +308,10 @@ function formatSource(source) {
   const map = {
     hackernews: 'Hacker News',
     github: 'GitHub',
+    baidu_news: 'Baidu News',
     bing: 'Bing News',
     google_news: 'Google News',
+    sogou_weixin: 'Sogou Weixin',
     weibo: 'Weibo',
   }
   return map[source] || source || 'Unknown'
