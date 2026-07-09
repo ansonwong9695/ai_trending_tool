@@ -129,7 +129,10 @@ def _weibo_signal(item: Dict[str, Any]) -> float:
     reposts = float(metrics.get("reposts_count") or 0.0)
     comments = float(metrics.get("comments_count") or 0.0)
     likes = float(metrics.get("attitudes_count") or 0.0)
+    followers = float(metrics.get("followers_count") or 0.0)
     signal = quality_score * 0.55 + min(30.0, reposts * 2.5 + comments * 3.0 + likes * 0.25)
+    if item.get("entity_type") == "account":
+        signal += min(18.0, followers / 50000.0)
     return _clamp_score(signal)
 
 
