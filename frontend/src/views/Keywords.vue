@@ -154,9 +154,10 @@ import { keywordsApi } from '../services/api.js'
 const SOURCES = [
   { value: 'hackernews', label: 'Hacker News' },
   { value: 'bing', label: 'Bing News' },
+  { value: 'google_news', label: 'Google News' },
   { value: 'weibo', label: 'Weibo' },
 ]
-const defaultSources = ['hackernews', 'bing', 'weibo']
+const defaultSources = ['hackernews', 'bing', 'google_news', 'weibo']
 
 const keywords = ref([])
 const loading = ref(false)
@@ -239,6 +240,8 @@ function formatSource(source) {
     ? 'Hacker News'
     : source === 'bing'
       ? 'Bing News'
+      : source === 'google_news'
+        ? 'Google News'
       : source === 'weibo'
         ? 'Weibo'
         : source

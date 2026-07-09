@@ -9,7 +9,7 @@ class Keyword(Base):
     id = Column(Integer, primary_key=True, index=True)
     keyword = Column(String(200), unique=True, nullable=False, index=True)
     is_active = Column(Boolean, default=True)
-    sources = Column(JSON, nullable=True)  # ["hackernews", "bing", "weibo"]
+    sources = Column(JSON, nullable=True)  # ["hackernews", "bing", "google_news", "weibo"]
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -21,7 +21,7 @@ class TrendingItem(Base):
     title = Column(String(500), nullable=False)
     url = Column(String(1000), nullable=True)
     summary = Column(Text, nullable=True)
-    source = Column(String(50), nullable=False)  # hackernews, bing, weibo, github, aggregated
+    source = Column(String(50), nullable=False)  # hackernews, bing, google_news, weibo, github
     score = Column(Float, default=0.0)
     tags = Column(JSON, nullable=True)
     keyword = Column(String(200), nullable=True, index=True)

@@ -17,6 +17,16 @@ USER_AGENTS = [
 
 TAG_RE = re.compile(r"<[^>]+>")
 BASE_URL = "https://m.weibo.cn/api/container/getIndex"
+LOW_SIGNAL_PATTERNS = (
+    "转发微博",
+    "哈哈",
+    "哈哈哈",
+    "来了",
+    "支持",
+    "打卡",
+    "蹲一个",
+    "mark",
+)
 
 
 def _strip_html(value: Optional[str]) -> str:
@@ -115,8 +125,65 @@ def _normalize_post(post: Dict[str, Any]) -> Dict[str, Any]:
             "comments_count": post.get("comments_count"),
             "attitudes_count": post.get("attitudes_count"),
         },
+        "is_retweet": bool(post.get("retweeted_status")),
         "raw_data": post,
     }
+
+
+def _as_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _score_post_quality(item: Dict[str, Any]) -> int:
+    metrics = item.get("public_metrics") or {}
+    reposts = _as_int(metrics.get("reposts_count"))
+    comments = _as_int(metrics.get("comments_count"))
+    likes = _as_int(metrics.get("attitudes_count"))
+    text = (item.get("text") or "").strip()
+    lowered = text.lower()
+    score = 0
+
+    score += min(reposts, 20) * 2
+    score += min(comments, 20) * 3
+    score += min(likes, 50)
+
+    if len(text) >= 60:
+        score += 8
+    elif len(text) >= 30:
+        score += 4
+    else:
+        score -= 8
+
+    if any(pattern in lowered for pattern in LOW_SIGNAL_PATTERNS):
+        score -= 12
+
+    if item.get("is_retweet"):
+        score -= 10
+
+    return score
+
+
+def _is_high_quality_post(item: Dict[str, Any]) -> bool:
+    text = (item.get("text") or "").strip()
+    if len(text) < 18:
+        return False
+
+    quality_score = _score_post_quality(item)
+    item["quality_score"] = quality_score
+
+    metrics = item.get("public_metrics") or {}
+    reposts = _as_int(metrics.get("reposts_count"))
+    comments = _as_int(metrics.get("comments_count"))
+    likes = _as_int(metrics.get("attitudes_count"))
+    engagement = reposts + comments + likes
+
+    if comments >= 3 or reposts >= 2:
+        return quality_score >= 8
+
+    return engagement >= 12 and quality_score >= 15
 
 
 def _extract_posts(payload: Dict[str, Any], limit: int, seen_ids: Set[str]) -> List[Dict[str, Any]]:
@@ -125,6 +192,8 @@ def _extract_posts(payload: Dict[str, Any], limit: int, seen_ids: Set[str]) -> L
     for raw_post in _iter_post_dicts(payload):
         item = _normalize_post(raw_post)
         if not item["id"] or not item["title"] or item["id"] in seen_ids:
+            continue
+        if not _is_high_quality_post(item):
             continue
         seen_ids.add(item["id"])
         items.append(item)

@@ -23,8 +23,8 @@
               <option value="hackernews">Hacker News</option>
               <option value="github">GitHub</option>
               <option value="bing">Bing News</option>
+              <option value="google_news">Google News</option>
               <option value="weibo">Weibo</option>
-              <option value="aggregated">聚合</option>
             </select>
           </div>
 
@@ -308,8 +308,8 @@ function formatSource(source) {
     hackernews: 'Hacker News',
     github: 'GitHub',
     bing: 'Bing News',
+    google_news: 'Google News',
     weibo: 'Weibo',
-    aggregated: '聚合输出',
   }
   return map[source] || source || 'Unknown'
 }

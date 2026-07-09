@@ -110,6 +110,7 @@ npm run dev
 | Web Push | `VAPID_*` | 禁用，不影响邮件和应用内通知 |
 | Hacker News | 无需配置 | 始终可用 |
 | Bing 新闻 | 无需配置 | 始终可用（注意频率限制） |
+| Google News | 无需配置 | 通过 RSS 搜索补充新闻来源 |
 
 ---
 
