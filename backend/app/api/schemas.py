@@ -35,6 +35,8 @@ class TrendingItemResponse(BaseModel):
     summary: Optional[str]
     source: str
     score: float
+    raw_score: Optional[float] = None
+    normalized_score: Optional[float] = None
     tags: Optional[List[str]]
     keyword: Optional[str]
     is_relevant: bool

@@ -45,6 +45,9 @@ async def fetch_github_trending(language: str = "", since: str = "daily") -> Lis
                         print(f"Error parsing GitHub trending item: {e}")
                         continue
 
+                if not repos:
+                    page_title = soup.title.get_text(strip=True) if soup.title else "no-title"
+                    print(f"GitHub trending parsed 0 repos from page titled: {page_title}")
                 return repos
             except Exception as e:
                 if attempt == 1:

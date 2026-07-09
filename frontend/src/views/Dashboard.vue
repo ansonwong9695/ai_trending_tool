@@ -51,9 +51,9 @@
           <span class="metric-note">实时活跃数据源</span>
         </div>
         <div class="metric-card">
-          <span class="metric-label">高分内容</span>
-          <strong class="metric-value mono">{{ highSignalCount }}</strong>
-          <span class="metric-note">评分 80+ 的热点</span>
+            <span class="metric-label">高热内容</span>
+            <strong class="metric-value mono">{{ highSignalCount }}</strong>
+            <span class="metric-note">统一热度 80+ 的热点</span>
         </div>
         <div class="metric-card">
           <span class="metric-label">最新捕获</span>
@@ -74,8 +74,8 @@
         <template #header>
           <div v-if="primaryItem" class="featured-meta">
             <span class="pill">{{ formatSource(primaryItem.source) }}</span>
-            <span class="pill" :class="scoreClass(primaryItem.score)">
-              {{ scoreText(primaryItem.score) }}
+            <span class="pill" :class="scoreClass(displayScore(primaryItem))">
+              {{ scoreText(displayScore(primaryItem)) }}
             </span>
           </div>
         </template>
@@ -161,8 +161,8 @@
           <div class="signal-top">
             <div class="signal-badges">
               <span class="pill">{{ formatSource(item.source) }}</span>
-              <span v-if="item.score" class="pill" :class="scoreClass(item.score)">
-                {{ scoreText(item.score) }}
+              <span v-if="displayScore(item)" class="pill" :class="scoreClass(displayScore(item))">
+                {{ scoreText(displayScore(item)) }}
               </span>
             </div>
             <span class="signal-time mono">{{ formatDate(item.created_at) }}</span>
@@ -232,7 +232,7 @@ const visibleCount = computed(() => items.value.length)
 
 const sourceCount = computed(() => new Set(items.value.map(item => item.source).filter(Boolean)).size)
 
-const highSignalCount = computed(() => items.value.filter(item => Number(item.score) >= 80).length)
+const highSignalCount = computed(() => items.value.filter(item => Number(displayScore(item)) >= 80).length)
 
 const latestCaptureLabel = computed(() => {
   if (!items.value.length) return '--'
@@ -335,7 +335,14 @@ function scoreClass(score) {
 
 function scoreText(score) {
   if (!score) return '新信号'
-  return `Score ${Number(score).toFixed(0)}`
+  return `Heat ${Number(score).toFixed(0)}`
+}
+
+function displayScore(item) {
+  if (!item) return 0
+  if (typeof item.normalized_score === 'number') return item.normalized_score
+  if (typeof item.score === 'number') return item.score
+  return 0
 }
 
 function resolveItemUrl(item) {

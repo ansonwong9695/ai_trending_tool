@@ -1,5 +1,6 @@
 import asyncio
 import re
+from collections import Counter
 from typing import List, Dict, Any
 from sqlalchemy import select
 
@@ -100,14 +101,77 @@ def _sort_trending_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return merged
 
 
-async def _save_items(items: List[Dict[str, Any]], keyword: str = None):
+def _clamp_score(value: float) -> float:
+    return max(0.0, min(100.0, round(value, 1)))
+
+
+def _hn_signal(item: Dict[str, Any]) -> float:
+    raw_score = float(item.get("score") or 0.0)
+    comments = float(item.get("descendants") or 0.0)
+    return _clamp_score((raw_score / 18.0) + (comments / 6.0))
+
+
+def _weibo_signal(item: Dict[str, Any]) -> float:
+    quality_score = float(item.get("quality_score") or 0.0)
+    metrics = item.get("public_metrics") or {}
+    reposts = float(metrics.get("reposts_count") or 0.0)
+    comments = float(metrics.get("comments_count") or 0.0)
+    likes = float(metrics.get("attitudes_count") or 0.0)
+    signal = quality_score * 0.55 + min(30.0, reposts * 2.5 + comments * 3.0 + likes * 0.25)
+    return _clamp_score(signal)
+
+
+def _generic_signal(item: Dict[str, Any]) -> float:
+    has_summary = 1.0 if item.get("summary") or item.get("snippet") or item.get("description") else 0.0
+    title_length = min(1.0, len(item.get("title", "")) / 120.0)
+    return _clamp_score(45.0 + has_summary * 20.0 + title_length * 15.0)
+
+
+def _compute_normalized_score(item: Dict[str, Any], rank: int | None = None) -> float:
+    source = item.get("source")
+    confidence = item.get("confidence")
+    confidence_score = float(confidence) * 100.0 if isinstance(confidence, (int, float)) else None
+
+    if source == "hackernews":
+        source_signal = _hn_signal(item)
+    elif source == "weibo":
+        source_signal = _weibo_signal(item)
+    else:
+        source_signal = _generic_signal(item)
+
+    if rank is not None:
+        rank_score = max(45.0, 100.0 - rank * 3.0)
+        return _clamp_score(rank_score)
+
+    if confidence_score is None:
+        return source_signal
+
+    return _clamp_score(confidence_score * 0.75 + source_signal * 0.25)
+
+
+def _prepare_item_for_storage(item: Dict[str, Any], rank: int | None = None) -> Dict[str, Any]:
+    prepared = dict(item)
+    prepared["raw_score"] = float(prepared.get("raw_score") or item.get("score") or 0.0)
+    if not isinstance(prepared.get("normalized_score"), (int, float)):
+        prepared["normalized_score"] = _compute_normalized_score(prepared, rank=rank)
+    return prepared
+
+
+async def _save_items(items: List[Dict[str, Any]], keyword: str = None) -> Dict[str, int]:
     """Save trending items to database, skipping duplicates by URL."""
+    inserted = 0
+    skipped_duplicate = 0
+    skipped_missing_title = 0
+
     async with async_session_maker() as db:
         for item in items:
+            item = _prepare_item_for_storage(item)
             url = item.get("url") or item.get("primary_url") or item.get("link")
-            title = item.get("title", "")
+            title = item.get("title") or item.get("name") or ""
             if not title:
+                skipped_missing_title += 1
                 continue
+            item["title"] = title
 
             # Skip duplicates by URL
             if url:
@@ -115,6 +179,7 @@ async def _save_items(items: List[Dict[str, Any]], keyword: str = None):
                     select(TrendingItem).where(TrendingItem.url == url)
                 )
                 if existing.scalar_one_or_none():
+                    skipped_duplicate += 1
                     continue
 
             db_item = TrendingItem(
@@ -130,8 +195,16 @@ async def _save_items(items: List[Dict[str, Any]], keyword: str = None):
                 summary=item.get("summary"),
             )
             db.add(db_item)
+            inserted += 1
 
         await db.commit()
+
+    return {
+        "inserted": inserted,
+        "skipped_duplicate": skipped_duplicate,
+        "skipped_missing_title": skipped_missing_title,
+        "attempted": len(items),
+    }
 
 
 async def run_keyword_monitor():
@@ -178,8 +251,12 @@ async def run_keyword_monitor():
                 relevant_items = all_items  # fallback: keep all
 
         if relevant_items:
-            await _save_items(relevant_items, keyword=kw.keyword)
-            print(f"Saved {len(relevant_items)} items for keyword '{kw.keyword}'")
+            save_stats = await _save_items(relevant_items, keyword=kw.keyword)
+            print(
+                f"Keyword '{kw.keyword}': attempted {save_stats['attempted']}, "
+                f"inserted {save_stats['inserted']}, duplicates {save_stats['skipped_duplicate']}, "
+                f"missing_title {save_stats['skipped_missing_title']}"
+            )
             try:
                 from app.services.notifier import notify_keyword_matches
                 await notify_keyword_matches(kw.keyword, relevant_items)
@@ -193,18 +270,31 @@ async def run_trending_collector():
     """Collect trending content from all sources and save deduped raw items."""
     print("Starting trending collector job...")
 
-    hn_task = fetch_hn_trending(limit=30)
-    github_task = fetch_github_trending()
-    bing_task = search_bing(TRENDING_NEWS_QUERY, limit=20)
-    google_news_task = search_google_news(TRENDING_NEWS_QUERY, limit=20)
-    results = await asyncio.gather(hn_task, github_task, bing_task, google_news_task, return_exceptions=True)
+    source_tasks = [
+        ("hackernews", fetch_hn_trending(limit=30)),
+        ("github", fetch_github_trending()),
+        ("bing", search_bing(TRENDING_NEWS_QUERY, limit=20)),
+        ("google_news", search_google_news(TRENDING_NEWS_QUERY, limit=20)),
+    ]
+    results = await asyncio.gather(*(task for _, task in source_tasks), return_exceptions=True)
 
     all_items = []
-    for r in results:
-        if isinstance(r, list):
-            all_items.extend(r)
+    fetched_counts: Dict[str, int] = {}
+    for (source_name, _), result in zip(source_tasks, results):
+        if isinstance(result, Exception):
+            fetched_counts[source_name] = 0
+            print(f"Trending source '{source_name}' failed: {repr(result)}")
+            continue
+
+        fetched_counts[source_name] = len(result)
+        if not result:
+            print(f"Trending source '{source_name}' returned 0 items.")
+            continue
+
+        all_items.extend(result)
 
     all_items = _dedupe_items(all_items)
+    deduped_counts = Counter(item.get("source", "unknown") for item in all_items)
 
     if not all_items:
         print("No items collected for trending.")
@@ -216,7 +306,19 @@ async def run_trending_collector():
             item["summary"] = item.get("snippet") or item.get("description") or ""
 
     ranked_items = _sort_trending_items(all_items)[:20]
-    await _save_items(ranked_items)
-    print(f"Saved {len(ranked_items)} raw trending items.")
+    selected_counts = Counter(item.get("source", "unknown") for item in ranked_items)
+    ranked_items = [_prepare_item_for_storage(item, rank=index) for index, item in enumerate(ranked_items)]
+    save_stats = await _save_items(ranked_items)
+    print(
+        "Trending source counts: "
+        f"fetched={dict(fetched_counts)}, "
+        f"deduped={dict(deduped_counts)}, "
+        f"selected={dict(selected_counts)}"
+    )
+    print(
+        f"Trending save stats: attempted {save_stats['attempted']}, "
+        f"inserted {save_stats['inserted']}, duplicates {save_stats['skipped_duplicate']}, "
+        f"missing_title {save_stats['skipped_missing_title']}"
+    )
 
     print("Trending collector job complete.")

@@ -31,6 +31,10 @@ class TrendingItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     @property
+    def raw_score(self):
+        return self.score
+
+    @property
     def primary_url(self):
         if self.url:
             return self.url
@@ -62,6 +66,14 @@ class TrendingItem(Base):
             seen.add(url)
             deduped.append(url)
         return deduped or None
+
+    @property
+    def normalized_score(self):
+        if isinstance(self.raw_data, dict):
+            value = self.raw_data.get("normalized_score")
+            if isinstance(value, (int, float)):
+                return float(value)
+        return None
 
 
 class Notification(Base):
